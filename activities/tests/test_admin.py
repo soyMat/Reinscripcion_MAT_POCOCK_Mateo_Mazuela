@@ -1,3 +1,5 @@
+from datetime import timedelta
+from activities.models import Registration
 from .support import NOW, BaseCase, login_teacher
 
 class AdminTests(BaseCase):
@@ -26,6 +28,19 @@ class AdminTests(BaseCase):
         self.client.post(url,{"student":self.bruno.pk,"activity":self.activity.pk,"_save":"Guardar"})
         registration.refresh_from_db()
         self.assertEqual(registration.student,self.ana);self.assertEqual(registration.cancelled_at,NOW)
+    def test_admin_sees_original_date_and_no_old_cancellation_after_reregistration(self):
+        self.enroll()
+        registration=Registration.objects.get()
+        Registration.objects.filter(pk=registration.pk).update(created_at=NOW-timedelta(hours=1))
+        self.cancel()
+        self.assertEqual(self.enroll(),"re_registered")
+        login_teacher(self.client)
+
+        listing=self.client.get("/admin/activities/registration/")
+        detail=self.client.get(f"/admin/activities/registration/{registration.pk}/change/")
+        for response in (listing,detail):
+            self.assertContains(response,"1 Oct. 2030 08:00")
+            self.assertNotContains(response,"1 Oct. 2030 09:00")
     def test_admin_can_reduce_capacity_after_a_cancellation(self):
         self.enroll();self.enroll(self.bruno);self.cancel(self.bruno)
         login_teacher(self.client)

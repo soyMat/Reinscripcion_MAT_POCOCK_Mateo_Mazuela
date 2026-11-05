@@ -111,7 +111,9 @@ class ViewTests(BaseCase):
             with freeze_view_clock(self.client, NOW):
                 return self.client.get("/my-registrations/")
         response=page()
-        self.assertContains(response,"Cancelar inscripción");self.assertContains(response,"confirm('¿Cancelar tu inscripción?")
+        self.assertContains(response,"Cancelar inscripción")
+        self.assertContains(response,"Vas a poder reinscribirte si la actividad sigue disponible.")
+        self.assertNotContains(response,"no vas a poder volver a inscribirte")
         self.activity.starts_at=NOW+timedelta(hours=2);self.activity.save()
         self.assertNotContains(page(),"Cancelar inscripción")
         self.activity.starts_at=NOW+timedelta(hours=48);self.activity.save()
@@ -309,6 +311,21 @@ class ViewTests(BaseCase):
         self.assertContains(response,'Cancelada')
         html=response.content.decode()
         self.assertLess(html.index('bruno'),html.index('ana'))
+    def test_teacher_sees_only_the_current_state_after_reregistration(self):
+        teacher=self.activity.responsible
+        self.enroll()
+        registration=Registration.objects.get()
+        Registration.objects.filter(pk=registration.pk).update(created_at=NOW-timedelta(hours=1))
+        self.cancel()
+        self.assertEqual(self.enroll(),"re_registered")
+
+        self.client.force_login(teacher)
+        response=self.client.get(f"/teacher/activities/{self.activity.pk}/")
+        self.assertContains(response,"ana")
+        self.assertContains(response,"01/10/2030 08:00")
+        self.assertContains(response,"Vigente")
+        self.assertNotContains(response,"Cancelada")
+        self.assertNotContains(response,"01/10/2030 09:00")
     def test_teacher_detail_requires_staff_and_ownership(self):
         from django.contrib.auth import get_user_model
         User=get_user_model()

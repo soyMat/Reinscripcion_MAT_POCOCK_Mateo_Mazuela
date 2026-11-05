@@ -13,7 +13,7 @@ uv run --locked python manage.py seed_demo
 uv run --locked python manage.py runserver 127.0.0.1:8000
 ```
 
-Abrir http://localhost:8000/ . Cuentas ficticias: `ana`, `bruno`, `docente`, `docente1`, `docente2`; contraseña inicial `untdf-demo-2026`. Docente entra en `/admin/`; `docente1` y `docente2` pueden consultar sus actividades en `/teacher/activities/`. Las actividades de ejemplo se reparten entre ambos. Las cuentas existentes conservan su contraseña y permisos al repetir seed. Recorrido: ingresar → catálogo → actividad → inscribirme → mis inscripciones → cancelar → salir (POST). Todos los horarios se muestran en America/Argentina/Ushuaia.
+Abrir http://localhost:8000/ . Cuentas ficticias: `ana`, `bruno`, `docente`, `docente1`, `docente2`; contraseña inicial `untdf-demo-2026`. Docente entra en `/admin/`; `docente1` y `docente2` pueden consultar sus actividades en `/teacher/activities/`. Las actividades de ejemplo se reparten entre ambos. Las cuentas existentes conservan su contraseña y permisos al repetir seed. Recorrido: ingresar → catálogo → actividad → inscribirme → mis inscripciones → cancelar → reinscribirme → salir (POST). Todos los horarios se muestran en America/Argentina/Ushuaia.
 
 ```sh
 ./scripts/check.sh
@@ -27,7 +27,7 @@ git config core.hooksPath .githooks
 
 Los commits de solo documentación no lo disparan. En CI, `.github/workflows/check.yml` corre el mismo script.
 
-Las pruebas usan `data/test.sqlite3`, aislada de `data/db.sqlite3`, y eliminan únicamente la base de pruebas. La suite completa corre 50 pruebas. Las pruebas concurrentes usan conexiones independientes y un archivo real, con barrera de inicio. No ejecutar dos suites sobre la misma carpeta al mismo tiempo.
+Las pruebas usan `data/test.sqlite3`, aislada de `data/db.sqlite3`, y eliminan únicamente la base de pruebas. La suite completa corre 71 pruebas. Las pruebas concurrentes usan conexiones independientes y un archivo real, con barrera de inicio. No ejecutar dos suites sobre la misma carpeta al mismo tiempo.
 
 ## Responsables docentes
 
@@ -37,9 +37,15 @@ Cada actividad tiene un responsable staff, asignable desde la administración. E
 
 Con una inscripción vigente, el detalle de la actividad y "Mis inscripciones" ofrecen **Cancelar inscripción** con confirmación del navegador. El botón aparece solo dentro de la ventana de cancelación; fuera de ella, el detalle explica el límite. La ventana es inclusiva: se puede cancelar hasta 24 horas antes del inicio, aunque la actividad esté deshabilitada. Si falta menos de 24 horas, si la actividad ya empezó o si ya pasó, la cancelación se rechaza con un mensaje que lo explica.
 
-Cancelar no borra la inscripción: conserva la fila con la fecha y hora de la cancelación en America/Argentina/Ushuaia y libera el cupo de inmediato. El catálogo vuelve a ofrecer la actividad y el docente puede reducir la capacidad, que se valida solo contra inscripciones vigentes. La inscripción cancelada sigue apareciendo en "Mis inscripciones" con su badge y su fecha, sin botón. No hay reinscripción: la misma actividad rechaza un nuevo intento con un mensaje propio —"cancelaste tu inscripción"— y el detalle explica el bloqueo en lugar de mostrar el formulario. El docente ve la fecha de cancelación en el listado y en el detalle de la administración, que sigue siendo de solo consulta.
+Cancelar no borra la inscripción: conserva la fila con la fecha y hora de la cancelación en America/Argentina/Ushuaia y libera el cupo de inmediato. El catálogo vuelve a ofrecer la actividad y el docente puede reducir la capacidad, que se valida solo contra inscripciones vigentes. La inscripción cancelada sigue apareciendo en "Mis inscripciones" con su estado y su fecha. El docente también ve ese estado actual. La administración sigue siendo de solo consulta.
 
 Cancelar es siempre un `POST` con CSRF e identidad tomada de la sesión; `GET` responde 405. La contención de la base devuelve un resultado reintentable sin efectos parciales, y la operación comparte la transacción `IMMEDIATE` con la inscripción.
+
+## Reinscribirse después de cancelar
+
+Una inscripción cancelada ofrece **Reinscribirme** en el detalle de la actividad y en "Mis inscripciones" cuando la actividad está habilitada, todavía no empezó y tiene cupo. Si alguna regla no se cumple, la pantalla explica el motivo. La reinscripción puede hacerse aunque falten menos de 24 horas para el inicio; ese límite corresponde solamente a la cancelación.
+
+Reinscribirse vuelve a poner vigente la misma inscripción: no crea otra fila, conserva la fecha original y borra la cancelación anterior. El alumno puede repetir el ciclo mientras cumpla las reglas. Si cancela otra vez, se guarda solamente la cancelación más reciente. Docentes y administración ven el estado actual, sin un historial anterior.
 
 ## Docker
 
@@ -67,7 +73,7 @@ No usar `down -v` para reinicios cotidianos. Stop/start conserva datos.
 
 ## Datos repetibles y reinicio explícito
 
-Seed crea cinco actividades: taller a +48h, clínica a +12h, laboratorio completo a +72h, deshabilitada a +96h e iniciada a −2h. Ana está en taller/clínica; Bruno en taller/laboratorio. La primera carga persiste su ancla; cargas siguientes no desplazan fechas, duplican registros ni reescriben usuarios o ediciones. Si falta una inscripción inicial y ya no se cumplen condiciones, seed informa el resultado y preserva lo existente.
+Seed crea cinco actividades: taller a +48h, clínica a +12h, laboratorio completo a +72h, deshabilitada a +96h e iniciada a −2h. Ana está en taller/clínica; Bruno en taller/laboratorio. La primera carga persiste su ancla; cargas siguientes no desplazan fechas, duplican registros ni reescriben usuarios o ediciones. Si una inscripción está cancelada, seed conserva esa cancelación y no la reinscribe. Si falta una inscripción inicial y ya no se cumplen condiciones, seed informa el resultado y preserva lo existente.
 
 Para reproducir una referencia exacta en una base nueva:
 

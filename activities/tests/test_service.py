@@ -98,6 +98,28 @@ class ServiceTests(BaseCase):
         self.enroll(); self.cancel()
         self.activity.starts_at=NOW+timedelta(hours=12); self.activity.save()
         self.assertEqual(self.enroll(), "re_registered")
+    def test_reregistration_inside_the_cancellation_window_cannot_be_cancelled(self):
+        self.enroll(); self.cancel()
+        self.activity.starts_at=NOW+timedelta(hours=12); self.activity.save()
+        self.assertEqual(self.enroll(), "re_registered")
+        self.assertEqual(self.cancel(), "window_closed")
+        self.assertIsNone(Registration.objects.get().cancelled_at)
+    def test_repeated_cycles_keep_the_original_date_and_latest_cancellation(self):
+        self.enroll()
+        registration=Registration.objects.get()
+        original_created_at=registration.created_at
+
+        self.assertEqual(self.cancel(now=NOW), "cancelled")
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW+timedelta(hours=1)), "re_registered")
+        self.assertEqual(self.cancel(now=NOW+timedelta(hours=2)), "cancelled")
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW+timedelta(hours=3)), "re_registered")
+        latest_cancellation=NOW+timedelta(hours=4)
+        self.assertEqual(self.cancel(now=latest_cancellation), "cancelled")
+
+        registration.refresh_from_db()
+        self.assertEqual(Registration.objects.count(),1)
+        self.assertEqual(registration.created_at,original_created_at)
+        self.assertEqual(registration.cancelled_at,latest_cancellation)
     def test_full(self):
         self.activity.capacity=1; self.activity.save(); self.enroll()
         self.assertEqual(self.enroll(self.bruno), "full")
