@@ -19,7 +19,13 @@
     {% if registration %}
       {% include 'activities/_registration_state.html' with registration=registration can_cancel=can_cancel %}
       {% if registration.cancelled_at %}
-      <p>No podés volver a inscribirte en esta actividad.</p>
+      {% if can_reregister %}
+      <form method="post" action="{% url 'register' activity.pk %}" class="inline-form">
+        {% csrf_token %}{{ form }}<button>Reinscribirme</button>
+      </form>
+      {% else %}
+      <p>{{ reregistration_message }}</p>
+      {% endif %}
       {% elif not can_cancel %}
       <p class="muted">Solo podés cancelar hasta {{ cancellation_window_hours }} horas antes del inicio de la actividad.</p>
       {% endif %}

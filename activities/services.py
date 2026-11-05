@@ -11,8 +11,8 @@ MESSAGES = {
     "enabled": "Actividad habilitada.",
     "disabled_activity": "Actividad deshabilitada; se conservaron las inscripciones vigentes.",
     "registered": "Inscripción confirmada.",
+    "re_registered": "Reinscripción confirmada.",
     "already_registered": "Ya estás inscripto en esta actividad.",
-    "previously_cancelled": "Cancelaste tu inscripción; no podés volver a inscribirte.",
     "full": "La actividad no tiene cupos disponibles.",
     "started": "La actividad ya comenzó.",
     "disabled": "La actividad está deshabilitada.",
@@ -36,6 +36,20 @@ def can_cancel(registration, now=None):
     """Una inscripción vigente puede cancelarse solo dentro de la ventana."""
     return registration is not None and registration.cancelled_at is None and within_cancellation_window(registration.activity, now)
 
+def registration_rejection(activity, now=None, available=None):
+    """Devuelve el motivo por el que una actividad no admite una inscripción."""
+    if not activity.is_active:
+        return "disabled"
+    now = now or timezone.now()
+    if activity.starts_at <= now:
+        return "started"
+    if available is None:
+        occupied = activity.registrations.filter(cancelled_at__isnull=True).count()
+        available = activity.capacity - occupied
+    if available <= 0:
+        return "full"
+    return None
+
 def register(*, student, activity_id, now=None):
     try:
         # SQLite adquiere la reserva de escritura ANTES de leer cupos (IMMEDIATE).
@@ -44,15 +58,15 @@ def register(*, student, activity_id, now=None):
             if activity is None:
                 return "not_available"
             registration = Registration.objects.filter(student=student, activity=activity).first()
+            if registration is not None and registration.cancelled_at is None:
+                return "already_registered"
+            rejection = registration_rejection(activity, now)
+            if rejection is not None:
+                return rejection
             if registration is not None:
-                return "already_registered" if registration.cancelled_at is None else "previously_cancelled"
-            if not activity.is_active:
-                return "disabled"
-            now = now or timezone.now()  # Instante real después de adquirir IMMEDIATE.
-            if activity.starts_at <= now:
-                return "started"
-            if activity.registrations.filter(cancelled_at__isnull=True).count() >= activity.capacity:
-                return "full"
+                registration.cancelled_at = None
+                registration.save(update_fields=["cancelled_at"])
+                return "re_registered"
             Registration.objects.create(student=student, activity=activity)
             return "registered"
     except OperationalError as error:

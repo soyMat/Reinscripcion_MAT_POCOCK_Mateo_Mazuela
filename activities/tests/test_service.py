@@ -64,21 +64,40 @@ class ServiceTests(BaseCase):
     def test_success_and_availability(self):
         self.assertEqual(self.enroll(), "registered")
         self.assertEqual(with_availability().get(pk=self.activity.pk).available, 1)
-    def test_previously_cancelled_even_when_now_full_disabled_or_started(self):
+    def test_reregistration_rejections_follow_disabled_started_full_precedence(self):
         self.activity.capacity=1; self.activity.save()
         self.enroll(); self.cancel()
+        self.assertEqual(self.enroll(self.bruno), "registered")
         self.activity.starts_at=NOW; self.activity.is_active=False; self.activity.save()
-        self.assertEqual(self.enroll(), "previously_cancelled")
-        self.assertEqual(Registration.objects.count(), 1)
+        self.assertEqual(self.enroll(), "disabled")
+        self.activity.is_active=True; self.activity.save()
+        self.assertEqual(self.enroll(), "started")
+        self.activity.starts_at=NOW+timedelta(hours=1); self.activity.save()
+        self.assertEqual(self.enroll(), "full")
+        self.assertIsNotNone(Registration.objects.get(student=self.ana).cancelled_at)
+        self.assertEqual(Registration.objects.filter(student=self.ana).count(), 1)
     def test_duplicate_even_when_now_full_or_started(self):
         self.enroll()
         self.activity.capacity=1; self.activity.starts_at=NOW; self.activity.is_active=False; self.activity.save()
         self.assertEqual(self.enroll(), "already_registered")
         self.assertEqual(Registration.objects.count(), 1)
-    def test_reregistration_over_cancelled_is_its_own_result_and_creates_no_row(self):
-        self.enroll(); self.cancel()
-        self.assertEqual(self.enroll(), "previously_cancelled")
+    def test_reregistration_reactivates_the_same_registration_and_keeps_its_date(self):
+        self.enroll()
+        registration = Registration.objects.get()
+        original_created_at = registration.created_at
+        self.cancel()
+
+        self.assertEqual(self.enroll(), "re_registered")
+
+        registration.refresh_from_db()
+        self.assertIsNone(registration.cancelled_at)
+        self.assertEqual(registration.created_at, original_created_at)
         self.assertEqual(Registration.objects.count(), 1)
+        self.assertEqual(with_availability().get(pk=self.activity.pk).available, 1)
+    def test_reregistration_is_allowed_inside_the_cancellation_window(self):
+        self.enroll(); self.cancel()
+        self.activity.starts_at=NOW+timedelta(hours=12); self.activity.save()
+        self.assertEqual(self.enroll(), "re_registered")
     def test_full(self):
         self.activity.capacity=1; self.activity.save(); self.enroll()
         self.assertEqual(self.enroll(self.bruno), "full")
