@@ -27,7 +27,7 @@ git config core.hooksPath .githooks
 
 Los commits de solo documentación no lo disparan. En CI, `.github/workflows/check.yml` corre el mismo script.
 
-Las pruebas usan `data/test.sqlite3`, aislada de `data/db.sqlite3`, y eliminan únicamente la base de pruebas. La suite completa corre 71 pruebas. Las pruebas concurrentes usan conexiones independientes y un archivo real, con barrera de inicio. No ejecutar dos suites sobre la misma carpeta al mismo tiempo.
+Las pruebas usan `data/test.sqlite3`, aislada de `data/db.sqlite3`, y eliminan únicamente la base de pruebas. La suite completa corre 74 pruebas. Las pruebas concurrentes usan conexiones independientes y un archivo real, con barrera de inicio. No ejecutar dos suites sobre la misma carpeta al mismo tiempo.
 
 ## Responsables docentes
 

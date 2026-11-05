@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+import sqlite3
 from threading import Barrier
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
@@ -46,6 +47,53 @@ class ConcurrencyTests(TransactionTestCase):
     def test_simultaneous_duplicate(self):
         self.assertCountEqual(self.race_registrations([self.ana,self.ana]),["registered","already_registered"])
         self.assertEqual(Registration.objects.count(),1)
+
+    def test_simultaneous_reregistrations_leave_one_current_registration(self):
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW),"registered")
+        self.assertEqual(cancel_registration(student=self.ana,activity_id=self.activity.pk,now=NOW),"cancelled")
+
+        outcomes=self.race_registrations([self.ana,self.ana])
+
+        self.assertCountEqual(outcomes,["re_registered","already_registered"])
+        self.assertEqual(Registration.objects.filter(student=self.ana,activity=self.activity).count(),1)
+        self.assertIsNone(Registration.objects.get(student=self.ana,activity=self.activity).cancelled_at)
+        self.assertEqual(with_availability().get(pk=self.activity.pk).available,0)
+
+    def test_reregistration_and_new_registration_compete_for_the_last_seat(self):
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW),"registered")
+        self.assertEqual(cancel_registration(student=self.ana,activity_id=self.activity.pk,now=NOW),"cancelled")
+
+        outcomes=self.race_registrations([self.ana,self.bruno])
+
+        self.assertIn(outcomes,[["re_registered","full"],["full","registered"]])
+        self.assertEqual(Registration.objects.filter(activity=self.activity,cancelled_at__isnull=True).count(),1)
+        self.assertEqual(with_availability().get(pk=self.activity.pk).available,0)
+        ana_registration=Registration.objects.get(student=self.ana,activity=self.activity)
+        self.assertEqual(ana_registration.cancelled_at is None,outcomes[0] == "re_registered")
+
+    def test_busy_reregistration_keeps_the_cancellation_and_can_be_retried(self):
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW),"registered")
+        self.assertEqual(cancel_registration(student=self.ana,activity_id=self.activity.pk,now=NOW),"cancelled")
+        database=str(connections["default"].settings_dict["NAME"])
+        options=connections.databases["default"]["OPTIONS"]
+        original_timeout=options["timeout"]
+        locker=sqlite3.connect(database,isolation_level=None)
+        locker.execute("BEGIN IMMEDIATE")
+        options["timeout"]=0.05
+        try:
+            outcomes=self.race([
+                lambda: register(student=self.ana,activity_id=self.activity.pk,now=NOW),
+            ])
+        finally:
+            options["timeout"]=original_timeout
+            locker.rollback()
+            locker.close()
+
+        self.assertEqual(outcomes,["busy"])
+        registration=Registration.objects.get(student=self.ana,activity=self.activity)
+        self.assertEqual(registration.cancelled_at,NOW)
+        self.assertEqual(with_availability().get(pk=self.activity.pk).available,1)
+        self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW),"re_registered")
 
     def test_cancelling_the_last_seat_while_another_student_registers(self):
         self.assertEqual(register(student=self.ana,activity_id=self.activity.pk,now=NOW),"registered")
