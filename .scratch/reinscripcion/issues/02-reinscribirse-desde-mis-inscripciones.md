@@ -6,11 +6,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] Cada inscripción cancelada muestra "Reinscribirme" cuando la acción está disponible.
-- [ ] Si no puede reinscribirse, se muestra el motivo correspondiente en la misma pantalla.
-- [ ] Una reinscripción exitosa vuelve a "Mis inscripciones" y muestra el mensaje de confirmación.
-- [ ] La acción usa las mismas reglas y el mismo servicio que el detalle.
-- [ ] Las inscripciones vigentes conservan sus acciones actuales.
-- [ ] El alumno solo puede ver y modificar sus propias inscripciones.
-- [ ] El catálogo sigue sin mostrar una acción personal de reinscripción.
-- [ ] Las pruebas HTTP de la pantalla, los mensajes y la privacidad quedan verdes.
+- [x] Cada inscripción cancelada muestra "Reinscribirme" cuando la acción está disponible.
+- [x] Si no puede reinscribirse, se muestra el motivo correspondiente en la misma pantalla.
+- [x] Una reinscripción exitosa vuelve a "Mis inscripciones" y muestra el mensaje de confirmación.
+- [x] La acción usa las mismas reglas y el mismo servicio que el detalle.
+- [x] Las inscripciones vigentes conservan sus acciones actuales.
+- [x] El alumno solo puede ver y modificar sus propias inscripciones.
+- [x] El catálogo sigue sin mostrar una acción personal de reinscripción.
+- [x] Las pruebas HTTP de la pantalla, los mensajes y la privacidad quedan verdes.
+
+## Comments
+
+- Implementado con ciclos TDD sobre la interfaz HTTP. La revisión de especificación no encontró faltantes; la revisión de estándares llevó a compartir la presentación de la reinscripción entre ambas pantallas. Verificación final: 67 pruebas verdes y sin migraciones nuevas.

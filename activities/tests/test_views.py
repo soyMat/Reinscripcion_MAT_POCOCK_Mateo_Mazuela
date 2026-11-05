@@ -2,9 +2,16 @@ from datetime import timedelta
 from unittest.mock import Mock, patch
 from django.test import Client
 from django.utils import timezone
-from activities.models import Registration
+from activities.models import Activity, Registration
 from activities.services import register
 from .support import NOW, BaseCase, activity, freeze_view_clock
+
+REREGISTRATION_REJECTION_CASES = {
+    "llena": (dict(capacity=1), "La actividad no tiene cupos disponibles."),
+    "deshabilitada": (dict(is_active=False), "La actividad está deshabilitada."),
+    "iniciada": (dict(starts_at=NOW), "La actividad ya comenzó."),
+    "deshabilitada_iniciada_y_llena": (dict(capacity=1, is_active=False, starts_at=NOW), "La actividad está deshabilitada."),
+}
 
 class ViewTests(BaseCase):
     def test_session_login_and_logout_post(self):
@@ -65,13 +72,7 @@ class ViewTests(BaseCase):
         self.assertEqual(Registration.objects.count(),1)
     def test_reregistration_explains_full_disabled_or_started(self):
         self.client.force_login(self.ana)
-        configurations={
-            "llena": (dict(capacity=1), "La actividad no tiene cupos disponibles."),
-            "deshabilitada": (dict(is_active=False), "La actividad está deshabilitada."),
-            "iniciada": (dict(starts_at=NOW), "La actividad ya comenzó."),
-            "deshabilitada_iniciada_y_llena": (dict(capacity=1, is_active=False, starts_at=NOW), "La actividad está deshabilitada."),
-        }
-        for name,(config, message) in configurations.items():
+        for name,(config, message) in REREGISTRATION_REJECTION_CASES.items():
             with self.subTest(name):
                 target=activity(title=name,**config)
                 Registration.objects.create(student=self.ana,activity=target,cancelled_at=NOW)
@@ -118,6 +119,36 @@ class ViewTests(BaseCase):
         response=page()
         self.assertContains(response,"Inscripción cancelada el 01/10/2030 09:00")
         self.assertNotContains(response,"Cancelar inscripción")
+    def test_cancelled_registration_can_reregister_from_mine(self):
+        self.client.force_login(self.ana); self.enroll(); self.cancel()
+        with freeze_view_clock(self.client, NOW):
+            response=self.client.get("/my-registrations/")
+        self.assertContains(response,"Reinscribirme")
+        self.assertNotContains(self.client.get("/activities/"),"Reinscribirme")
+    def test_reregister_from_mine_returns_with_confirmation(self):
+        self.client.force_login(self.ana); self.enroll(); self.cancel()
+        with freeze_view_clock(self.client, NOW):
+            response=self.client.post(
+                f"/activities/{self.activity.pk}/register/",
+                {"return_to": "mine"},
+                follow=True,
+            )
+        self.assertRedirects(response,"/my-registrations/")
+        self.assertContains(response,"Reinscripción confirmada.")
+        self.assertContains(response,"Tu inscripción está confirmada.")
+        self.assertEqual(Registration.objects.count(),1)
+        self.assertEqual(Registration.objects.get().student,self.ana)
+    def test_mine_explains_why_a_cancelled_registration_cannot_be_reactivated(self):
+        self.client.force_login(self.ana)
+        for name,(config, message) in REREGISTRATION_REJECTION_CASES.items():
+            with self.subTest(name), freeze_view_clock(self.client,NOW):
+                Activity.objects.all().delete()
+                target=activity(title=name,**config)
+                Registration.objects.create(student=self.ana,activity=target,cancelled_at=NOW)
+                if target.capacity == 1: Registration.objects.create(student=self.bruno,activity=target)
+                response=self.client.get("/my-registrations/")
+                self.assertContains(response,message)
+                self.assertNotContains(response,"Reinscribirme")
     def test_mine_evaluates_the_window_at_a_single_instant(self):
         self.client.force_login(self.ana)
         for title in ("Taller","Clínica"):

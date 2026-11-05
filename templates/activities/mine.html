@@ -14,6 +14,9 @@
     <div class="activity-body">
       <h2><a href="{% url 'activity_detail' row.registration.activity.pk %}">{{ row.registration.activity.title }}</a></h2>
       {% include 'activities/_registration_state.html' with registration=row.registration can_cancel=row.can_cancel %}
+      {% if row.registration.cancelled_at %}
+        {% include 'activities/_reregistration_action.html' with activity=row.registration.activity can_reregister=row.can_reregister reregistration_message=row.reregistration_message return_to='mine' %}
+      {% endif %}
     </div>
   </li>
   {% endfor %}

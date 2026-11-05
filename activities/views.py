@@ -17,6 +17,12 @@ def flash_result(request, result):
     severity = "success" if result in SUCCESS_RESULTS else "warning"
     messages.info(request, MESSAGES[result], extra_tags=f"{result} {severity}")
 
+def reregistration_context(registration, activity, now, available=None):
+    if registration is None or registration.cancelled_at is None:
+        return {"can_reregister": False, "reregistration_message": None}
+    result = registration_rejection(activity, now, available)
+    return {"can_reregister": result is None, "reregistration_message": MESSAGES.get(result)}
+
 @login_required
 def catalog(request):
     # El GROUP BY de annotate() ignora Meta.ordering; el orden explícito sostiene la agrupación por día.
@@ -34,9 +40,9 @@ def detail(request, pk):
     now = timezone.now()
     registration_result = registration_rejection(activity, now, activity.available)
     open_for_registration = registration_result is None
-    reregistration_result = registration_result if registration is not None and registration.cancelled_at is not None else None
-    can_reregister = registration is not None and registration.cancelled_at is not None and reregistration_result is None
-    return render(request, "activities/detail.html", {"activity": activity, "registration": registration, "can_register": open_for_registration and registration is None, "can_reregister": can_reregister, "reregistration_message": MESSAGES.get(reregistration_result), "can_cancel": can_cancel(registration, now), "cancellation_window_hours": CANCELLATION_WINDOW_HOURS, "form": RegistrationForm()})
+    context = {"activity": activity, "registration": registration, "can_register": open_for_registration and registration is None, "can_cancel": can_cancel(registration, now), "cancellation_window_hours": CANCELLATION_WINDOW_HOURS, "form": RegistrationForm()}
+    context.update(reregistration_context(registration, activity, now, activity.available))
+    return render(request, "activities/detail.html", context)
 
 @login_required
 @require_POST
@@ -45,6 +51,8 @@ def enroll(request, pk):
     if form.is_valid():
         result = register(student=request.user, activity_id=pk)
         flash_result(request, result)
+    if request.POST.get("return_to") == "mine":
+        return redirect("mine")
     return redirect("activity_detail", pk=pk)
 
 @login_required
@@ -58,7 +66,14 @@ def cancel(request, pk):
 def mine(request):
     now = timezone.now()  # Un solo instante para todas las filas.
     registrations = Registration.objects.filter(student=request.user).select_related("activity")
-    rows = [{"registration": registration, "can_cancel": can_cancel(registration, now)} for registration in registrations]
+    rows = []
+    for registration in registrations:
+        row = {
+            "registration": registration,
+            "can_cancel": can_cancel(registration, now),
+        }
+        row.update(reregistration_context(registration, registration.activity, now))
+        rows.append(row)
     return render(request, "activities/mine.html", {"rows": rows})
 
 @login_required
